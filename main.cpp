@@ -111,7 +111,7 @@ public:
         mouthAngle = 0.0f;
         mouthSpeed = 8.0f;
         rotationAngle = 0;
-        chompSound = LoadSound("waka.mp3");
+        chompSound = LoadSound("chomp.mp3");
     }
 
     bool AudioLoadedOK() const { return chompSound.frameCount > 0; }
@@ -162,7 +162,10 @@ public:
                 score += (cell == 3) ? 50 : 10;
                 cell = 0;
                 if (chompSound.frameCount > 0)
-                    ateSomething = true;
+                {
+                    PlaySound(chompSound);
+                    ateSomething = false;
+                }
             }
 
             if ((nextDirX != 0 || nextDirY != 0) && maze[gridY + nextDirY][gridX + nextDirX] != 1)
@@ -449,7 +452,7 @@ int main()
     const int ghostStartY[4] = {8, 8, 10, 10};
 
     Sound deathSound = LoadSound("death.mp3");
-    Sound sirenSound = LoadSound("siren.wav");
+    Sound sirenSound = LoadSound("siren.mp3");
 
     bool deathSoundOk = (deathSound.frameCount > 0);
     bool sirenOk = (sirenSound.frameCount > 0);
@@ -458,12 +461,12 @@ int main()
     ResetMaze();
     int pelletsLeft = CountPellets();
     float dyingTimer = 0.0f;
-    float sirenTimer = 0.0f;
-    const float SIREN_OVERLAP_INTERVAL = 0.35f;
+    float sirenTimer = 1.0f;
 
     float empCooldown = 0.0f;
     bool isEmpActive = false;
     float empTimer = 0.0f;
+    const float SIREN_OVERLAP_INTERVAL = 0.4f;
 
     while (!WindowShouldClose())
     {
@@ -547,7 +550,7 @@ int main()
                     for (int i = 0; i < (int)ghosts.size(); i++)
                         ghosts[i].ResetPosition(ghostStartX[i], ghostStartY[i]);
                     state = PLAYING;
-                    sirenTimer = SIREN_OVERLAP_INTERVAL;
+                    // background siren removed
                 }
             }
         }
@@ -570,7 +573,7 @@ int main()
                 empCooldown = 0.0f;
                 isEmpActive = false;
                 empTimer = 0.0f;
-                sirenTimer = SIREN_OVERLAP_INTERVAL;
+                // background siren removed
                 state = PLAYING;
             }
             if (IsKeyPressed(KEY_Q))
