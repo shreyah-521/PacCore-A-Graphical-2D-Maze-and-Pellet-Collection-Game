@@ -4,18 +4,20 @@
 #include <string>
 #include <ctime>
 #include <algorithm>
+#include <fstream>
+using namespace std;
 
 const int TILE_SIZE = 30;
 const int GRID_ROWS = 21;
 const int GRID_COLS = 21;
 const int HUD_HEIGHT = 50;
 
-const int SCREEN_WIDTH = GRID_COLS * TILE_SIZE + 80;
-const int SCREEN_HEIGHT = GRID_ROWS * TILE_SIZE + HUD_HEIGHT + 50;
+const int SCREEN_WIDTH = GRID_COLS * TILE_SIZE + 80;               // 710
+const int SCREEN_HEIGHT = GRID_ROWS * TILE_SIZE + HUD_HEIGHT + 50; // 730
 
 const float DEATH_ANIM_DURATION = 1.0f;
-const int OFFSET_X = (SCREEN_WIDTH - (GRID_COLS * TILE_SIZE)) / 2;
-const int OFFSET_Y = HUD_HEIGHT + (SCREEN_HEIGHT - HUD_HEIGHT - (GRID_ROWS * TILE_SIZE)) / 2;
+const int OFFSET_X = (SCREEN_WIDTH - (GRID_COLS * TILE_SIZE)) / 2;                            // 40
+const int OFFSET_Y = HUD_HEIGHT + (SCREEN_HEIGHT - HUD_HEIGHT - (GRID_ROWS * TILE_SIZE)) / 2; // 75
 
 int maze[GRID_ROWS][GRID_COLS];
 
@@ -38,17 +40,38 @@ int CountPellets()
     int count = 0;
     for (int r = 0; r < GRID_ROWS; r++)
         for (int c = 0; c < GRID_COLS; c++)
-            if (maze[r][c] == 2 || maze[r][c] == 3)
+            if (maze[r][c] == 2 || maze[r][c] == 3) // 2 for dot pellet & 3 for power pellet
                 count++;
     return count;
 }
-
-// ---------- Procedural maze generation ----------
 
 struct GridPoint
 {
     int r, c;
 };
+
+// High score saving and loading functions
+int LoadHighScore()
+{
+    int hs = 0;
+    ifstream file("highscore.txt");
+    if (file.is_open())
+    {
+        file >> hs;
+        file.close();
+    }
+    return hs;
+}
+
+void SaveHighScore(int hs)
+{
+    ofstream file("highscore.txt");
+    if (file.is_open())
+    {
+        file << hs;
+        file.close();
+    }
+}
 
 // Cells that must always stay open for PacMan/ghost spawns
 static const int GHOST_HOUSE_R0 = 7, GHOST_HOUSE_R1 = 11;
@@ -66,7 +89,7 @@ static void CarveSpanningTree()
             visited[r][c] = false;
         }
 
-    std::vector<GridPoint> stack;
+    vector<GridPoint> stack;
     maze[1][1] = 0;
     visited[1][1] = true;
     stack.push_back({1, 1});
@@ -131,7 +154,7 @@ static void EnsureConnected()
         for (int c = 0; c < GRID_COLS; c++)
             reached[r][c] = false;
 
-    std::vector<GridPoint> stack;
+    vector<GridPoint> stack;
     stack.push_back({PACMAN_SPAWN_R, PACMAN_SPAWN_C});
     reached[PACMAN_SPAWN_R][PACMAN_SPAWN_C] = true;
 
@@ -259,7 +282,8 @@ private:
     int dirX, dirY;
     int nextDirX, nextDirY;
     float speed;
-    int score;
+    static int score;
+    static int highScore;
     int lives;
 
     float mouthAngle;
@@ -286,12 +310,13 @@ public:
         y = c.y;
         dirX = dirY = nextDirX = nextDirY = 0;
         speed = 2.5f;
-        score = 0;
         lives = 3;
         mouthAngle = 0.0f;
         mouthSpeed = 8.0f;
         rotationAngle = 0;
         chompSound = LoadSound("chomp.mp3");
+
+        highScore = LoadHighScore();
     }
 
     bool AudioLoadedOK() const { return chompSound.frameCount > 0; }
@@ -341,6 +366,14 @@ public:
             {
                 score += (cell == 3) ? 50 : 10;
                 cell = 0;
+
+                // High score update if exceeded
+                if (score > highScore)
+                {
+                    highScore = score;
+                    SaveHighScore(highScore);
+                }
+
                 if (chompSound.frameCount > 0)
                 {
                     PlaySound(chompSound);
@@ -417,6 +450,7 @@ public:
     }
 
     void LoseLife() { lives--; }
+
     void ResetPosition(int gx, int gy)
     {
         gridX = gx;
@@ -428,10 +462,14 @@ public:
         mouthAngle = 0.0f;
     }
 
-    void ResetGame(int startGridX, int startGridY)
+    void ResetGame(int startGridX, int startGridY, GameState state)
     {
-        score = 0;
-        lives = 3;
+        // Fully reset score and lives only if lost or explicitly restarted
+        if (state == LOST || lives <= 0)
+        {
+            score = 0;
+            lives = 3;
+        }
         ResetPosition(startGridX, startGridY);
         StopAudio();
         mouthAngle = 0.0f;
@@ -439,8 +477,13 @@ public:
 
     Vector2 GetPosition() const { return {x, y}; }
     int GetScore() const { return score; }
+    int GethighScore() const { return highScore; }
     int GetLives() const { return lives; }
 };
+
+// Static member variable initialization
+int PacMan::score = 0;
+int PacMan::highScore = 0;
 
 class Ghost
 {
@@ -590,9 +633,10 @@ void DrawMaze()
     }
 }
 
-void DrawHUD(int score, int lives, float empCooldown, bool isEmpActive)
+void DrawHUD(int score, int highScore, int lives, float empCooldown, bool isEmpActive)
 {
     DrawText(TextFormat("SCORE: %d", score), 30, 15, 20, WHITE);
+    DrawText(TextFormat("High Score: %d", highScore), 30, 35, 20, WHITE);
     DrawText(TextFormat("LIVES: %d", lives), SCREEN_WIDTH - 140, 15, 20, WHITE);
 
     int barX = 220, barY = 15, barW = 200, barH = 20;
@@ -627,7 +671,7 @@ int main()
     const int PACMAN_START_X = 9, PACMAN_START_Y = 16;
     PacMan pacman(PACMAN_START_X, PACMAN_START_Y);
 
-    std::vector<Ghost> ghosts = {
+    vector<Ghost> ghosts = {
         Ghost(9, 8, RED), Ghost(10, 8, PINK), Ghost(9, 10, SKYBLUE), Ghost(10, 10, ORANGE)};
     const int ghostStartX[4] = {9, 10, 9, 10};
     const int ghostStartY[4] = {8, 8, 10, 10};
@@ -719,13 +763,11 @@ int main()
             {
                 if (pacman.GetLives() <= 0)
                 {
-                    if (CountPellets() <= 0)
-                        state = WON;
-                    else
-                        state = LOST;
+                    state = LOST; // Game Over
                 }
                 else
                 {
+                    // Respawn PacMan & Ghosts without resetting score/lives
                     pacman.ResetPosition(PACMAN_START_X, PACMAN_START_Y);
                     for (int i = 0; i < (int)ghosts.size(); i++)
                         ghosts[i].ResetPosition(ghostStartX[i], ghostStartY[i]);
@@ -744,7 +786,7 @@ int main()
             if (IsKeyPressed(KEY_R))
             {
                 ResetMaze();
-                pacman.ResetGame(PACMAN_START_X, PACMAN_START_Y);
+                pacman.ResetGame(PACMAN_START_X, PACMAN_START_Y, state);
                 for (int i = 0; i < (int)ghosts.size(); i++)
                     ghosts[i].ResetPosition(ghostStartX[i], ghostStartY[i]);
                 pelletsLeft = CountPellets();
@@ -775,7 +817,7 @@ int main()
                 g.Draw(isEmpActive);
         }
 
-        DrawHUD(pacman.GetScore(), pacman.GetLives(), empCooldown, isEmpActive);
+        DrawHUD(pacman.GetScore(), pacman.GethighScore(), pacman.GetLives(), empCooldown, isEmpActive);
 
         if (state == WON)
         {
@@ -785,6 +827,7 @@ int main()
             int winW = MeasureText(winText, 40);
             int rpW = MeasureText(replayTxt, 20);
             int exW = MeasureText(exitTxt, 20);
+
             DrawText(winText, SCREEN_WIDTH / 2 - winW / 2, SCREEN_HEIGHT / 2, 40, GREEN);
             DrawText(replayTxt, SCREEN_WIDTH / 2 - rpW / 2, SCREEN_HEIGHT / 2 + 40, 20, WHITE);
             DrawText(exitTxt, SCREEN_WIDTH / 2 - exW / 2, SCREEN_HEIGHT / 2 + 70, 20, WHITE);
