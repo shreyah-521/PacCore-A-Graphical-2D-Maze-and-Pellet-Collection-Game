@@ -2,6 +2,8 @@
 #include <cmath>
 #include <vector>
 #include <string>
+#include <ctime>
+#include <algorithm>
 
 const int TILE_SIZE = 30;
 const int GRID_ROWS = 21;
@@ -14,29 +16,6 @@ const int SCREEN_HEIGHT = GRID_ROWS * TILE_SIZE + HUD_HEIGHT + 50;
 const float DEATH_ANIM_DURATION = 1.0f;
 const int OFFSET_X = (SCREEN_WIDTH - (GRID_COLS * TILE_SIZE)) / 2;
 const int OFFSET_Y = HUD_HEIGHT + (SCREEN_HEIGHT - HUD_HEIGHT - (GRID_ROWS * TILE_SIZE)) / 2;
-
-const int initialMaze[GRID_ROWS][GRID_COLS] = {
-    {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
-    {1, 3, 2, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 2, 2, 3, 1, 1},
-    {1, 2, 1, 1, 2, 1, 1, 1, 2, 1, 2, 1, 1, 1, 2, 1, 1, 2, 1, 1, 1},
-    {1, 2, 1, 1, 2, 1, 1, 1, 2, 1, 2, 1, 1, 1, 2, 1, 1, 2, 1, 1, 1},
-    {1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1},
-    {1, 2, 1, 1, 2, 1, 2, 1, 1, 1, 1, 1, 2, 1, 2, 1, 1, 2, 1, 2, 1},
-    {1, 2, 2, 2, 2, 1, 2, 2, 2, 1, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 1},
-    {1, 1, 1, 1, 2, 1, 1, 1, 0, 1, 0, 1, 1, 1, 2, 1, 1, 1, 1, 2, 1},
-    {0, 0, 0, 1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 1, 2, 1, 0, 0, 0, 0, 0},
-    {1, 1, 1, 1, 2, 1, 0, 1, 1, 0, 1, 1, 0, 1, 2, 1, 1, 1, 1, 2, 1},
-    {0, 0, 0, 0, 2, 0, 0, 1, 0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0},
-    {1, 1, 1, 1, 2, 1, 0, 1, 1, 1, 1, 1, 0, 1, 2, 1, 1, 1, 1, 2, 1},
-    {0, 0, 0, 1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 1, 2, 1, 0, 0, 0, 0, 0},
-    {1, 1, 1, 1, 2, 1, 0, 1, 1, 1, 1, 1, 0, 1, 2, 1, 1, 1, 1, 2, 1},
-    {1, 2, 2, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1},
-    {1, 2, 1, 1, 2, 1, 1, 1, 2, 1, 2, 1, 1, 1, 2, 1, 1, 2, 1, 2, 1},
-    {1, 3, 2, 1, 2, 2, 2, 2, 2, 0, 2, 2, 2, 2, 2, 1, 2, 2, 1, 3, 1},
-    {1, 1, 2, 1, 2, 1, 2, 1, 1, 1, 1, 1, 2, 1, 2, 1, 2, 1, 1, 2, 1},
-    {1, 2, 2, 2, 2, 1, 2, 2, 2, 1, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 1},
-    {1, 2, 1, 1, 1, 1, 1, 1, 2, 1, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1},
-    {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}};
 
 int maze[GRID_ROWS][GRID_COLS];
 
@@ -64,11 +43,212 @@ int CountPellets()
     return count;
 }
 
-void ResetMaze()
+// ---------- Procedural maze generation ----------
+
+struct GridPoint
 {
+    int r, c;
+};
+
+// Cells that must always stay open for PacMan/ghost spawns
+static const int GHOST_HOUSE_R0 = 7, GHOST_HOUSE_R1 = 11;
+static const int GHOST_HOUSE_C0 = 8, GHOST_HOUSE_C1 = 11;
+static const int PACMAN_SPAWN_R = 16, PACMAN_SPAWN_C = 9;
+
+// Carves a random spanning-tree maze (recursive backtracker)
+static void CarveSpanningTree()
+{
+    static bool visited[GRID_ROWS][GRID_COLS];
     for (int r = 0; r < GRID_ROWS; r++)
         for (int c = 0; c < GRID_COLS; c++)
-            maze[r][c] = initialMaze[r][c];
+        {
+            maze[r][c] = 1;
+            visited[r][c] = false;
+        }
+
+    std::vector<GridPoint> stack;
+    maze[1][1] = 0;
+    visited[1][1] = true;
+    stack.push_back({1, 1});
+
+    while (!stack.empty())
+    {
+        GridPoint cur = stack.back();
+
+        int dirs[4][2] = {{-2, 0}, {2, 0}, {0, -2}, {0, 2}};
+        for (int i = 3; i > 0; i--)
+        {
+            int j = GetRandomValue(0, i);
+            int tmp0 = dirs[i][0], tmp1 = dirs[i][1];
+            dirs[i][0] = dirs[j][0];
+            dirs[i][1] = dirs[j][1];
+            dirs[j][0] = tmp0;
+            dirs[j][1] = tmp1;
+        }
+
+        bool moved = false;
+        for (int i = 0; i < 4; i++)
+        {
+            int nr = cur.r + dirs[i][0];
+            int nc = cur.c + dirs[i][1];
+            if (nr > 0 && nr < GRID_ROWS - 1 && nc > 0 && nc < GRID_COLS - 1 && !visited[nr][nc])
+            {
+                maze[cur.r + dirs[i][0] / 2][cur.c + dirs[i][1] / 2] = 0;
+                maze[nr][nc] = 0;
+                visited[nr][nc] = true;
+                stack.push_back({nr, nc});
+                moved = true;
+                break;
+            }
+        }
+        if (!moved)
+            stack.pop_back();
+    }
+}
+
+// Knocks down some extra walls so the maze has loops, not just one path
+static void AddLoops()
+{
+    for (int r = 1; r < GRID_ROWS - 1; r++)
+    {
+        for (int c = 1; c < GRID_COLS - 1; c++)
+        {
+            if (maze[r][c] != 1)
+                continue;
+            bool horizOpen = (maze[r][c - 1] == 0 && maze[r][c + 1] == 0);
+            bool vertOpen = (maze[r - 1][c] == 0 && maze[r + 1][c] == 0);
+            if ((horizOpen || vertOpen) && GetRandomValue(0, 99) < 20)
+                maze[r][c] = 0;
+        }
+    }
+}
+
+// Flood-fills from spawn and connects any isolated pockets
+static void EnsureConnected()
+{
+    static bool reached[GRID_ROWS][GRID_COLS];
+    for (int r = 0; r < GRID_ROWS; r++)
+        for (int c = 0; c < GRID_COLS; c++)
+            reached[r][c] = false;
+
+    std::vector<GridPoint> stack;
+    stack.push_back({PACMAN_SPAWN_R, PACMAN_SPAWN_C});
+    reached[PACMAN_SPAWN_R][PACMAN_SPAWN_C] = true;
+
+    while (!stack.empty())
+    {
+        GridPoint cur = stack.back();
+        stack.pop_back();
+        int dr[4] = {-1, 1, 0, 0};
+        int dc[4] = {0, 0, -1, 1};
+        for (int i = 0; i < 4; i++)
+        {
+            int nr = cur.r + dr[i], nc = cur.c + dc[i];
+            if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS &&
+                maze[nr][nc] != 1 && !reached[nr][nc])
+            {
+                reached[nr][nc] = true;
+                stack.push_back({nr, nc});
+            }
+        }
+    }
+
+    for (int r = 1; r < GRID_ROWS - 1; r++)
+    {
+        for (int c = 1; c < GRID_COLS - 1; c++)
+        {
+            if (maze[r][c] == 1 || reached[r][c])
+                continue;
+
+            int bestR = PACMAN_SPAWN_R, bestC = PACMAN_SPAWN_C, bestDist = 1 << 30;
+            for (int rr = 0; rr < GRID_ROWS; rr++)
+                for (int cc = 0; cc < GRID_COLS; cc++)
+                    if (reached[rr][cc])
+                    {
+                        int d = abs(rr - r) + abs(cc - c);
+                        if (d < bestDist)
+                        {
+                            bestDist = d;
+                            bestR = rr;
+                            bestC = cc;
+                        }
+                    }
+
+            int rr = r, cc = c;
+            while (cc != bestC)
+            {
+                cc += (bestC > cc) ? 1 : -1;
+                maze[rr][cc] = 0;
+                reached[rr][cc] = true;
+            }
+            while (rr != bestR)
+            {
+                rr += (bestR > rr) ? 1 : -1;
+                maze[rr][cc] = 0;
+                reached[rr][cc] = true;
+            }
+            reached[r][c] = true;
+        }
+    }
+}
+
+// Drops a power pellet near each of the four corners
+static void PlacePowerPellets()
+{
+    int targets[4][2] = {
+        {1, 1}, {1, GRID_COLS - 2}, {GRID_ROWS - 2, 1}, {GRID_ROWS - 2, GRID_COLS - 2}};
+
+    for (int t = 0; t < 4; t++)
+    {
+        int tr = targets[t][0], tc = targets[t][1];
+        int bestR = -1, bestC = -1, bestDist = 1 << 30;
+        for (int r = 0; r < GRID_ROWS; r++)
+            for (int c = 0; c < GRID_COLS; c++)
+                if (maze[r][c] == 2)
+                {
+                    int d = abs(r - tr) + abs(c - tc);
+                    if (d < bestDist)
+                    {
+                        bestDist = d;
+                        bestR = r;
+                        bestC = c;
+                    }
+                }
+        if (bestR != -1)
+            maze[bestR][bestC] = 3;
+    }
+}
+
+void ResetMaze()
+{
+    CarveSpanningTree();
+    AddLoops();
+
+    // stamp ghost house + spawn tile open
+    for (int r = GHOST_HOUSE_R0; r <= GHOST_HOUSE_R1; r++)
+        for (int c = GHOST_HOUSE_C0; c <= GHOST_HOUSE_C1; c++)
+            maze[r][c] = 0;
+
+    maze[PACMAN_SPAWN_R][PACMAN_SPAWN_C] = 0;
+
+    EnsureConnected();
+
+    // fill open floor with pellets, except ghost house and spawn tile
+    for (int r = 1; r < GRID_ROWS - 1; r++)
+    {
+        for (int c = 1; c < GRID_COLS - 1; c++)
+        {
+            if (maze[r][c] != 0)
+                continue;
+            bool inGhostHouse = (r >= GHOST_HOUSE_R0 && r <= GHOST_HOUSE_R1 &&
+                                 c >= GHOST_HOUSE_C0 && c <= GHOST_HOUSE_C1);
+            bool isPacmanSpawn = (r == PACMAN_SPAWN_R && c == PACMAN_SPAWN_C);
+            if (!inGhostHouse && !isPacmanSpawn)
+                maze[r][c] = 2;
+        }
+    }
+
+    PlacePowerPellets();
 }
 
 class PacMan
@@ -164,7 +344,7 @@ public:
                 if (chompSound.frameCount > 0)
                 {
                     PlaySound(chompSound);
-                    ateSomething = false;
+                    ateSomething = true;
                 }
             }
 
@@ -442,6 +622,7 @@ int main()
     InitAudioDevice();
     SetMasterVolume(1.0f);
     SetTargetFPS(60);
+    SetRandomSeed((unsigned int)time(NULL));
 
     const int PACMAN_START_X = 9, PACMAN_START_Y = 16;
     PacMan pacman(PACMAN_START_X, PACMAN_START_Y);
@@ -538,7 +719,6 @@ int main()
             {
                 if (pacman.GetLives() <= 0)
                 {
-                    // If no pellets remain, prefer WIN over GAME OVER
                     if (CountPellets() <= 0)
                         state = WON;
                     else
@@ -550,7 +730,6 @@ int main()
                     for (int i = 0; i < (int)ghosts.size(); i++)
                         ghosts[i].ResetPosition(ghostStartX[i], ghostStartY[i]);
                     state = PLAYING;
-                    // background siren removed
                 }
             }
         }
@@ -560,7 +739,6 @@ int main()
                 StopSound(sirenSound);
         }
 
-        // Replay / Exit handling when game is lost or won
         if (state == LOST || state == WON)
         {
             if (IsKeyPressed(KEY_R))
@@ -573,12 +751,11 @@ int main()
                 empCooldown = 0.0f;
                 isEmpActive = false;
                 empTimer = 0.0f;
-                // background siren removed
                 state = PLAYING;
             }
             if (IsKeyPressed(KEY_Q))
             {
-                break; // exit game loop and perform cleanup
+                break;
             }
         }
 
