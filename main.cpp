@@ -476,6 +476,10 @@ public:
     }
 
     Vector2 GetPosition() const { return {x, y}; }
+    int GetGridX() const { return gridX; }
+    int GetGridY() const { return gridY; }
+    int GetDirX() const { return dirX; }
+    int GetDirY() const { return dirY; }
     int GetScore() const { return score; }
     int GethighScore() const { return highScore; }
     int GetLives() const { return lives; }
@@ -495,6 +499,7 @@ private:
     float speed;
     Color color;
     float bobPhase;
+    int behavior; // 0 = random, 1 = chase 1 tile ahead of Pac-Man, 2 = chase 1 tile behind Pac-Man
 
     float StepToward(float current, float target) const
     {
@@ -506,12 +511,13 @@ private:
     }
 
 public:
-    Ghost(int startGX, int startGY, Color c)
+    Ghost(int startGX, int startGY, Color c, int behaviorMode = 0)
     {
         startGridX = startGX;
         startGridY = startGY;
         color = c;
         speed = 1.8f;
+        behavior = behaviorMode;
         bobPhase = (float)GetRandomValue(0, 628) / 100.0f;
         ResetPosition(startGridX, startGridY);
     }
@@ -527,10 +533,13 @@ public:
         dirY = -1;
     }
 
-    void Update(bool isStunned)
+    void Update(bool isStunned, int aheadX, int aheadY, int behindX, int behindY)
     {
         if (isStunned)
             return;
+
+        int targetX = (behavior == 1) ? aheadX : behindX;
+        int targetY = (behavior == 1) ? aheadY : behindY;
 
         Vector2 target = CellCenter(gridX, gridY);
         if (x == target.x && y == target.y)
@@ -559,11 +568,28 @@ public:
                 dirX = -dirX;
                 dirY = -dirY;
             }
-            else
+            else if (behavior == 0)
             {
                 int pick = GetRandomValue(0, count - 1);
                 dirX = options[pick][0];
                 dirY = options[pick][1];
+            }
+            else
+            {
+                int bestPick = 0, bestDist = 1 << 30;
+                for (int i = 0; i < count; i++)
+                {
+                    int nx = gridX + options[i][0];
+                    int ny = gridY + options[i][1];
+                    int d = abs(nx - targetX) + abs(ny - targetY);
+                    if (d < bestDist)
+                    {
+                        bestDist = d;
+                        bestPick = i;
+                    }
+                }
+                dirX = options[bestPick][0];
+                dirY = options[bestPick][1];
             }
             gridX += dirX;
             gridY += dirY;
@@ -672,7 +698,10 @@ int main()
     PacMan pacman(PACMAN_START_X, PACMAN_START_Y);
 
     vector<Ghost> ghosts = {
-        Ghost(9, 8, RED), Ghost(10, 8, PINK), Ghost(9, 10, SKYBLUE), Ghost(10, 10, ORANGE)};
+        Ghost(9, 8, RED, 1),    // chases 1 tile ahead of Pac-Man
+        Ghost(10, 8, PINK, 2),  // chases 1 tile behind Pac-Man
+        Ghost(9, 10, SKYBLUE),  // random wander
+        Ghost(10, 10, ORANGE)}; // random wander
     const int ghostStartX[4] = {9, 10, 9, 10};
     const int ghostStartY[4] = {8, 8, 10, 10};
 
@@ -727,8 +756,14 @@ int main()
 
             pacman.Update();
             pelletsLeft = CountPellets();
+
+            int aheadX = pacman.GetGridX() + pacman.GetDirX();
+            int aheadY = pacman.GetGridY() + pacman.GetDirY();
+            int behindX = pacman.GetGridX() - pacman.GetDirX();
+            int behindY = pacman.GetGridY() - pacman.GetDirY();
+
             for (auto &g : ghosts)
-                g.Update(isEmpActive);
+                g.Update(isEmpActive, aheadX, aheadY, behindX, behindY);
 
             if (pelletsLeft <= 0)
                 state = WON;
