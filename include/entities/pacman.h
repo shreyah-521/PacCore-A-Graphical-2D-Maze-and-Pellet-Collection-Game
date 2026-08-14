@@ -18,6 +18,8 @@ private:
     float mouthSpeed;
     int rotationAngle;
     Sound chompSound;
+    bool audioLoaded;
+    int audioLoadAttempts;
 
     float StepToward(float current, float target) const;
 

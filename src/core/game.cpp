@@ -6,7 +6,7 @@
 
 namespace
 {
-    const float SIREN_OVERLAP_INTERVAL = 0.4f;
+    const float SIREN_OVERLAP_INTERVAL = 1.2f;
 }
 
 void DrawHUD(int score, int highScore, int lives, float empCooldown, bool isEmpActive)
@@ -60,14 +60,14 @@ Game::Game()
 
     deathSound = LoadSound("assets/audio/death.mp3");
     sirenSound = LoadSound("assets/audio/siren.mp3");
-    deathSoundOk = (deathSound.frameCount > 0);
-    sirenOk = (sirenSound.frameCount > 0);
+    deathSoundOk = true;
+    sirenOk = true;
 
     state = PLAYING;
     ResetMaze();
     pelletsLeft = CountPellets();
     dyingTimer = 0.0f;
-    sirenTimer = 1.0f;
+    sirenTimer = 1.5f;
 
     empCooldown = 0.0f;
     isEmpActive = false;
@@ -89,11 +89,10 @@ void Game::UpdatePlaying(float dt)
 {
     if (sirenOk)
     {
-        sirenTimer += dt;
-        if (sirenTimer >= SIREN_OVERLAP_INTERVAL)
+        // Only play siren if it's not already playing
+        if (!IsSoundPlaying(sirenSound))
         {
             PlaySound(sirenSound);
-            sirenTimer = 0.0f;
         }
     }
 

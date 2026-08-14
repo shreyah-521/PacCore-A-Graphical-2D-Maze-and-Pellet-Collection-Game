@@ -199,7 +199,7 @@ void ResetMaze()
             if (maze[r][c] != 0)
                 continue;
             bool inGhostHouse = (r >= GHOST_HOUSE_R0 && r <= GHOST_HOUSE_R1 &&
-                                  c >= GHOST_HOUSE_C0 && c <= GHOST_HOUSE_C1);
+                                 c >= GHOST_HOUSE_C0 && c <= GHOST_HOUSE_C1);
             bool isPacmanSpawn = (r == PACMAN_SPAWN_R && c == PACMAN_SPAWN_C);
             if (!inGhostHouse && !isPacmanSpawn)
                 maze[r][c] = 2;

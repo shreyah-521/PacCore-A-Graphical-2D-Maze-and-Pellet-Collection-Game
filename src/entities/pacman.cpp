@@ -28,18 +28,22 @@ PacMan::PacMan(int startGridX, int startGridY)
     mouthAngle = 0.0f;
     mouthSpeed = 8.0f;
     rotationAngle = 0;
+    audioLoaded = false;
+    audioLoadAttempts = 0;
     chompSound = LoadSound("assets/audio/chomp.mp3");
+    if (chompSound.frameCount > 0 || chompSound.stream.buffer != NULL)
+        audioLoaded = true;
 
     highScore = LoadHighScore();
 }
 
 PacMan::~PacMan()
 {
-    if (chompSound.frameCount > 0)
+    if (audioLoaded)
         UnloadSound(chompSound);
 }
 
-bool PacMan::AudioLoadedOK() const { return chompSound.frameCount > 0; }
+bool PacMan::AudioLoadedOK() const { return audioLoaded; }
 
 void PacMan::HandleInput()
 {
@@ -68,6 +72,16 @@ void PacMan::HandleInput()
 bool PacMan::Update()
 {
     HandleInput();
+
+    // Attempt to load audio if not loaded yet (limit to 5 attempts)
+    if (!audioLoaded && audioLoadAttempts < 5)
+    {
+        chompSound = LoadSound("assets/audio/chomp.mp3");
+        audioLoadAttempts++;
+        if (chompSound.frameCount > 0 || chompSound.stream.buffer != NULL)
+            audioLoaded = true;
+    }
+
     bool ateSomething = false;
     Vector2 target = CellCenter(gridX, gridY);
 
@@ -88,7 +102,7 @@ bool PacMan::Update()
                 SaveHighScore(highScore);
             }
 
-            if (chompSound.frameCount > 0)
+            if (audioLoaded)
             {
                 PlaySound(chompSound);
                 ateSomething = true;
@@ -112,7 +126,7 @@ bool PacMan::Update()
         }
     }
 
-    if (dirX == 0 && dirY == 0 && chompSound.frameCount > 0)
+    if (dirX == 0 && dirY == 0 && audioLoaded)
         StopSound(chompSound);
 
     if (dirX != 0)
@@ -140,7 +154,7 @@ bool PacMan::Update()
 
 void PacMan::StopAudio()
 {
-    if (chompSound.frameCount > 0)
+    if (audioLoaded)
         StopSound(chompSound);
 }
 
@@ -174,6 +188,9 @@ void PacMan::ResetPosition(int gx, int gy)
     y = c.y;
     dirX = dirY = nextDirX = nextDirY = 0;
     mouthAngle = 0.0f;
+    audioLoadAttempts = 0;
+    chompSound = LoadSound("assets/audio/chomp.mp3");
+    audioLoaded = true;
 }
 
 void PacMan::ResetGame(int startGridX, int startGridY, GameState state)
